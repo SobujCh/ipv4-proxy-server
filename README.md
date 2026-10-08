@@ -72,7 +72,7 @@ sudo nano /etc/ipv4-proxy-server/ip_list.txt
 sudo ./ipv4-proxy-server.sh -a restart
 ```
 
-The addresses you leave in the file keep their ports. To go back to every public address, delete that file and restart.
+Ports stay in order with no gaps. The first address left in the file uses the first port, and the next address uses the next port. To go back to every public address, delete that file and restart.
 
 ## Usage
 

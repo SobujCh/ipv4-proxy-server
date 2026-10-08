@@ -45,7 +45,7 @@ proxy listener on each one. Each proxy binds outbound traffic to its IPv4.
 After the first start, the same proxies start again when the machine restarts.
 The first start also saves every public address to ${IP_LIST_FILE}.
 Later starts use only the addresses still listed there. Delete a line and
-restart to stop proxying that address. The others keep their ports.
+restart to stop proxying that address. Ports stay in order with no gaps.
 
 Options:
   -u USER          Proxy username (requires -p for authentication)
@@ -315,19 +315,15 @@ read_ip_list_addresses() {
 fill_proxy_ips() {
     local -a detected=() listed=() chosen=()
     local -A on_host=()
-    local ip listed_ip
+    local listed_ip detected_ip
 
     mapfile -t detected < <(detect_public_ipv4s)
     if ((${#detected[@]} == 0)); then
         die "No public IPv4 addresses detected on this machine."
     fi
 
-    unset PROXY_PORT_INDEX
-    declare -gA PROXY_PORT_INDEX=()
-    local i
-    for i in "${!detected[@]}"; do
-        PROXY_PORT_INDEX["${detected[$i]}"]="${i}"
-        on_host["${detected[$i]}"]=1
+    for detected_ip in "${detected[@]}"; do
+        on_host["${detected_ip}"]=1
     done
 
     mkdir -p "${CONFIG_DIR}"
@@ -342,25 +338,17 @@ fill_proxy_ips() {
     fi
 
     mapfile -t listed < <(read_ip_list_addresses)
-    local -A allow=()
+    local -A seen=()
     for listed_ip in "${listed[@]+"${listed[@]}"}"; do
         [[ -n "${listed_ip}" ]] || continue
-        allow["${listed_ip}"]=1
-    done
-
-    for ip in "${detected[@]}"; do
-        if [[ -n "${allow[${ip}]:-}" ]]; then
-            chosen+=("${ip}")
+        [[ -n "${seen[${listed_ip}]:-}" ]] && continue
+        seen["${listed_ip}"]=1
+        if [[ -n "${on_host[${listed_ip}]:-}" ]]; then
+            chosen+=("${listed_ip}")
+        else
+            log "Skipping ${listed_ip}; it is not a public address on this machine."
         fi
     done
-
-    if ((${#allow[@]} > 0)); then
-        for listed_ip in "${!allow[@]}"; do
-            if [[ -z "${on_host[${listed_ip}]:-}" ]]; then
-                log "Skipping ${listed_ip}; it is not a public address on this machine."
-            fi
-        done
-    fi
 
     if ((${#chosen[@]} == 0)); then
         die "No addresses in ${IP_LIST_FILE} match a public IPv4 on this machine."
@@ -372,6 +360,7 @@ fill_proxy_ips() {
 
 generate_config() {
     local ip port
+    local port_offset=0
 
     fill_proxy_ips
 
@@ -400,9 +389,10 @@ generate_config() {
         echo
 
         for ip in "${PROXY_IPS[@]}"; do
-            port=$((BASE_PORT + PROXY_PORT_INDEX[${ip}]))
+            port=$((BASE_PORT + port_offset))
             echo "proxy -p${port} -e${ip}"
             echo "${ip}:${port}" >>"${MAP_FILE}"
+            port_offset=$((port_offset + 1))
         done
     } >"${CONFIG_FILE}"
 
