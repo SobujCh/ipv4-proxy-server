@@ -11,6 +11,8 @@ Built on [3proxy](https://github.com/z3APA3A/3proxy).
 - Optional username/password authentication
 - Installs 3proxy via apt or builds from source if needed
 - Simple start / stop / restart / status controls
+- Starts again on its own after the machine restarts
+- Saves the addresses it uses, so you can delete one and leave it out
 
 ## Requirements
 
@@ -22,11 +24,26 @@ Built on [3proxy](https://github.com/z3APA3A/3proxy).
 ## Quick Start
 
 ```bash
+curl -fsSL -O https://raw.githubusercontent.com/SobujCh/ipv4-proxy-server/refs/heads/main/ipv4-proxy-server.sh
 chmod +x ipv4-proxy-server.sh
 sudo ./ipv4-proxy-server.sh -u pxuser -p your-password
 ```
 
 On success, the script prints a list of proxy URLs, one per detected IPv4.
+
+You only set this up once. After that, the proxies start again on their own when the machine restarts. The username, password, and ports stay the same.
+
+Check whether it is running:
+
+```bash
+sudo ./ipv4-proxy-server.sh -a status
+```
+
+Restart it:
+
+```bash
+sudo ./ipv4-proxy-server.sh -a restart
+```
 
 ### Example output
 
@@ -37,9 +54,25 @@ HTTP proxies ready (one outbound IPv4 per port):
   203.0.113.11     http://pxuser:your-password@203.0.113.11:30001
 
 Config : /etc/ipv4-proxy-server/3proxy.cfg
+IP list: /etc/ipv4-proxy-server/ip_list.txt
 Log    : /var/log/ipv4-proxy-server.log
 PID    : 12345
+These proxies start again when the machine restarts.
+Delete an address from the IP list, then restart, to stop using it.
 ```
+
+## Leave an address out
+
+The first start saves every public address in `/etc/ipv4-proxy-server/ip_list.txt`.
+
+To stop using one address, delete that line and restart:
+
+```bash
+sudo nano /etc/ipv4-proxy-server/ip_list.txt
+sudo ./ipv4-proxy-server.sh -a restart
+```
+
+The addresses you leave in the file keep their ports. To go back to every public address, delete that file and restart.
 
 ## Usage
 
@@ -69,17 +102,17 @@ sudo ./ipv4-proxy-server.sh -b 20000 -u pxuser -p secret
 
 # Stop / restart / check status
 sudo ./ipv4-proxy-server.sh -a stop
-sudo ./ipv4-proxy-server.sh -a restart -u pxuser -p your-password
+sudo ./ipv4-proxy-server.sh -a restart
 sudo ./ipv4-proxy-server.sh -a status
 ```
 
 ## How It Works
 
-1. **Detect IPs** — Reads global-scope IPv4 addresses with `ip -4 -o addr show scope global` and filters out private/reserved ranges (RFC1918, loopback, link-local, CGNAT, etc.).
+1. **Detect IPs** — Reads global-scope IPv4 addresses with `ip -4 -o addr show scope global` and filters out private/reserved ranges (RFC1918, loopback, link-local, CGNAT, etc.). If `ip_list.txt` already exists, only addresses in that file are used.
 2. **Assign ports** — Maps each public IPv4 to a consecutive port starting at `30000` (or `-b` value): first IP → 30000, second → 30001, and so on.
 3. **Generate config** — Writes a 3proxy config with one `proxy -pPORT -eIP` line per address.
 4. **Authentication** — If both `-u` and `-p` are provided, enables `auth strong`. Otherwise runs with `auth none`.
-5. **Start 3proxy** — Launches 3proxy as a background daemon.
+5. **Start 3proxy** — Launches 3proxy and keeps the setup so it starts again after a reboot. The username, password, and base port are reused until you pass new ones.
 
 ## Authentication
 
@@ -118,6 +151,7 @@ Adjust the range to match your number of public IPv4 addresses.
 | Path | Purpose |
 |------|---------|
 | `/etc/ipv4-proxy-server/3proxy.cfg` | Generated 3proxy configuration |
+| `/etc/ipv4-proxy-server/ip_list.txt` | Addresses to proxy. Delete a line to leave that address out. |
 | `/etc/ipv4-proxy-server/proxy-map.txt` | IP-to-port mapping |
 | `/var/run/ipv4-proxy-server.pid` | Process ID file |
 | `/var/log/ipv4-proxy-server.log` | 3proxy log file |
@@ -163,9 +197,10 @@ Pick a different base port with `-b`, or stop the conflicting service.
 Stop or restart before starting again:
 
 ```bash
-sudo ./ipv4-proxy-server.sh -a stop
-sudo ./ipv4-proxy-server.sh -u pxuser -p your-password
+sudo ./ipv4-proxy-server.sh -a restart
 ```
+
+Stopping it only stops it until the next time the machine restarts. After a restart of the machine, it comes back with the same login and ports.
 
 ## License
 
